@@ -1,0 +1,228 @@
+import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Grade Entry System',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: const GradeEntryScreen(),
+    );
+  }
+}
+
+class GradeEntryScreen extends StatefulWidget {
+  const GradeEntryScreen({super.key});
+
+  @override
+  _GradeEntryScreenState createState() => _GradeEntryScreenState();
+}
+
+class _GradeEntryScreenState extends State<GradeEntryScreen> {
+  late Database database;
+  List<Map<String, dynamic>> grades = [];
+
+  final TextEditingController marksController = TextEditingController();
+  String? selectedSubject;
+  int? selectedSemester;
+  int? selectedCreditHour;
+
+  final List<String> subjects = [
+    'OOP',
+    'App Development',
+    'AI',
+    'Compiler Construction',
+    'Information Security',
+    'Operating System'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    initializeDatabase();
+  }
+
+  Future<void> initializeDatabase() async {
+    database = await openDatabase(
+      join(await getDatabasesPath(), 'grades.db'),
+      onCreate: (db, version) {
+        return db.execute(
+          "CREATE TABLE grades(id INTEGER PRIMARY KEY, subject TEXT, marks INTEGER, semester INTEGER, creditHour INTEGER)",
+        );
+      },
+      version: 1,
+    );
+    fetchGrades();
+  }
+
+  Future<void> insertGrade(String subject, int marks, int semester, int creditHour) async {
+    await database.insert(
+      'grades',
+      {'subject': subject, 'marks': marks, 'semester': semester, 'creditHour': creditHour},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    fetchGrades();
+  }
+
+  Future<void> fetchGrades() async {
+    final List<Map<String, dynamic>> fetchedGrades = await database.query('grades');
+    setState(() {
+      grades = fetchedGrades;
+    });
+  }
+
+  Future<void> deleteGrade(int id) async {
+    await database.delete('grades', where: 'id = ?', whereArgs: [id]);
+    fetchGrades();
+  }
+
+  Future<void> updateGrade(int id, int updatedMarks) async {
+    await database.update(
+      'grades',
+      {'marks': updatedMarks},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    fetchGrades();
+  }
+
+  void showEditDialog(BuildContext context, Map<String, dynamic> grade) {
+    TextEditingController editMarksController = TextEditingController(text: grade['marks'].toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Edit Grade'),
+          content: TextField(
+            controller: editMarksController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Enter New Marks'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                int updatedMarks = int.tryParse(editMarksController.text) ?? grade['marks'];
+                updateGrade(grade['id'], updatedMarks);
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Grade Entry System')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            DropdownButtonFormField<String>(
+              decoration: const InputDecoration(labelText: 'Select Subject'),
+              value: selectedSubject,
+              onChanged: (newValue) => setState(() => selectedSubject = newValue),
+              items: subjects.map((subject) {
+                return DropdownMenuItem(value: subject, child: Text(subject));
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: marksController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Enter Marks'),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(labelText: 'Select Semester'),
+              value: selectedSemester,
+              onChanged: (newValue) => setState(() => selectedSemester = newValue),
+              items: List.generate(8, (index) => index + 1).map((sem) {
+                return DropdownMenuItem(value: sem, child: Text('Semester $sem'));
+              }).toList(),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(labelText: 'Select Credit Hour'),
+              value: selectedCreditHour,
+              onChanged: (newValue) => setState(() => selectedCreditHour = newValue),
+              items: List.generate(4, (index) => index + 1).map((credit) {
+                return DropdownMenuItem(value: credit, child: Text('$credit Credit Hour'));
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                if (selectedSubject != null &&
+                    marksController.text.isNotEmpty &&
+                    selectedSemester != null &&
+                    selectedCreditHour != null) {
+                  int marks = int.tryParse(marksController.text) ?? 0;
+                  insertGrade(selectedSubject!, marks, selectedSemester!, selectedCreditHour!);
+                  marksController.clear();
+                  setState(() {
+                    selectedSubject = null;
+                    selectedSemester = null;
+                    selectedCreditHour = null;
+                  });
+                }
+              },
+              child: const Text('Submit'),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: grades.isEmpty
+                  ? const Center(child: Text('No data available'))
+                  : ListView.builder(
+                itemCount: grades.length,
+                itemBuilder: (context, index) {
+                  final grade = grades[index];
+                  return Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    child: ListTile(
+                      title: Text('${grade['subject']} - ${grade['marks']} Marks'),
+                      subtitle: Text('Semester: ${grade['semester']}, Credit: ${grade['creditHour']}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => showEditDialog(context, grade),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => deleteGrade(grade['id']),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
