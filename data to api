@@ -1,0 +1,176 @@
+SUBMIT COURSE
+
+import 'package:flutter/material.dart';
+import 'database_helper.dart';
+
+class SubmitCourseScreen extends StatefulWidget {
+  @override
+  _SubmitCourseScreenState createState() => _SubmitCourseScreenState();
+}
+
+class _SubmitCourseScreenState extends State<SubmitCourseScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _userIdController = TextEditingController();
+  final TextEditingController _marksController = TextEditingController();
+  String? _selectedCourse;
+  int? _semester;
+  int? _creditHours;
+
+  List<String> courses = [
+    "OOP",
+    "AI",
+    "App Development",
+    "Compiler Construction",
+    "Information Security",
+    "Operating System"
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Submit Course")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _userIdController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: "User ID"),
+                validator: (value) => value!.isEmpty ? "Enter user ID" : null,
+              ),
+              DropdownButtonFormField<String>(
+                value: _selectedCourse,
+                items: courses.map((course) {
+                  return DropdownMenuItem(value: course, child: Text(course));
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedCourse = val),
+                decoration: InputDecoration(labelText: "Course Name"),
+                validator: (value) =>
+                value == null ? "Select a course" : null,
+              ),
+              DropdownButtonFormField<int>(
+                value: _semester,
+                items: List.generate(8, (index) => index + 1).map((sem) {
+                  return DropdownMenuItem(value: sem, child: Text("Semester $sem"));
+                }).toList(),
+                onChanged: (val) => setState(() => _semester = val),
+                decoration: InputDecoration(labelText: "Semester No"),
+              ),
+              DropdownButtonFormField<int>(
+                value: _creditHours,
+                items: List.generate(4, (index) => index + 1).map((ch) {
+                  return DropdownMenuItem(value: ch, child: Text("$ch Credit Hour"));
+                }).toList(),
+                onChanged: (val) => setState(() => _creditHours = val),
+                decoration: InputDecoration(labelText: "Credit Hours"),
+              ),
+              TextFormField(
+                controller: _marksController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(labelText: "Marks"),
+                validator: (value) => value!.isEmpty ? "Enter marks" : null,
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () async {
+                  if (_formKey.currentState!.validate()) {
+                    await DatabaseHelper.instance.insertCourse({
+                      'user_id': int.parse(_userIdController.text),
+                      'course_name': _selectedCourse!,
+                      'semester_no': _semester!,
+                      'credit_hours': _creditHours!,
+                      'marks': int.parse(_marksController.text),
+                      'synced': 0,
+                    });
+                    Navigator.pushNamed(context, '/submitted');
+                  }
+                },
+                child: Text("Submit"),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+.................................................................................................
+  SUBMITTED COURSES SCREEN
+
+
+  
+  import 'package:flutter/material.dart';
+import 'database_helper.dart';
+import 'package:http/http.dart' as http;
+
+class SubmittedCoursesScreen extends StatefulWidget {
+  @override
+  _SubmittedCoursesScreenState createState() => _SubmittedCoursesScreenState();
+}
+
+class _SubmittedCoursesScreenState extends State<SubmittedCoursesScreen> {
+  List<Map<String, dynamic>> _courses = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCourses();
+  }
+
+  Future<void> _loadCourses() async {
+    final data = await DatabaseHelper.instance.getAllCourses();
+    setState(() {
+      _courses = data;
+    });
+  }
+
+  Future<void> _syncData() async {
+    for (var course in _courses.where((c) => c['synced'] == 0)) {
+      final response = await http.post(
+        Uri.parse('https://devtechtop.com/management/public/api/insert_data'),
+        body: {
+          'user_id': course['user_id'].toString(),
+          'course_name': course['course_name'],
+          'semester_no': course['semester_no'].toString(),
+          'credit_hours': course['credit_hours'].toString(),
+          'marks': course['marks'].toString(),
+        },
+      );
+
+      if (response.statusCode == 200) {
+        await DatabaseHelper.instance.markAsSynced(course['id']);
+      }
+    }
+    await _loadCourses();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sync complete!")));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Submitted Courses")),
+      body: _courses.isEmpty
+          ? Center(child: Text("No data submitted"))
+          : ListView.builder(
+        itemCount: _courses.length,
+        itemBuilder: (context, index) {
+          final course = _courses[index];
+          return ListTile(
+            title: Text("${course['course_name']} - ${course['marks']} marks"),
+            subtitle: Text("User ID: ${course['user_id']} | Semester: ${course['semester_no']} | Synced: ${course['synced']}"),
+          );
+        },
+      ),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: ElevatedButton(
+          onPressed: _syncData,
+          child: Text("Sync All"),
+        ),
+      ),
+    );
+  }
+}
