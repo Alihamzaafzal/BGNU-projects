@@ -1,0 +1,115 @@
+MAP STATIC SCREEN 
+
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
+class StaticMapScreen extends StatelessWidget {
+  final LatLng universityLocation = LatLng(31.449926, 73.699463);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Baba Guru Nanak University')),
+      body: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: universityLocation,
+          zoom: 16,
+        ),
+        markers: {
+          Marker(
+            markerId: MarkerId('university'),
+            position: universityLocation,
+            infoWindow: InfoWindow(title: 'Baba Guru Nanak University'),
+          )
+        },
+      ),
+    );
+  }
+}
+..........................................................................................................
+
+MAP SEARCH SCREEN 
+
+import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+
+class SearchableMapScreen extends StatefulWidget {
+  @override
+  _SearchableMapScreenState createState() => _SearchableMapScreenState();
+}
+
+class _SearchableMapScreenState extends State<SearchableMapScreen> {
+  GoogleMapController? mapController;
+  LatLng _currentLatLng = LatLng(31.5204, 74.3587); // Default: Lahore
+  Marker? _searchMarker;
+  TextEditingController _searchController = TextEditingController();
+
+  Future<void> _searchPlace() async {
+    String query = _searchController.text.trim();
+    if (query.isEmpty) return;
+
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        Location location = locations.first;
+        LatLng newPosition = LatLng(location.latitude, location.longitude);
+
+        setState(() {
+          _currentLatLng = newPosition;
+          _searchMarker = Marker(
+            markerId: MarkerId('search'),
+            position: newPosition,
+            infoWindow: InfoWindow(title: query),
+          );
+        });
+
+        mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(newPosition, 14),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Location not found!')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Search Location')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Enter city, country, or place',
+                suffixIcon: IconButton(
+                  icon: Icon(Icons.search),
+                  onPressed: _searchPlace,
+                ),
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => _searchPlace(),
+            ),
+          ),
+          Expanded(
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _currentLatLng,
+                zoom: 12,
+              ),
+              onMapCreated: (controller) {
+                mapController = controller;
+              },
+              markers: _searchMarker != null ? {_searchMarker!} : {},
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
